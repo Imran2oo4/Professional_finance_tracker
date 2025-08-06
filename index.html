@@ -1,0 +1,475 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Personal Finance Dashboard</title>
+  <script src="https://unpkg.com/react@18.2.0/umd/react.development.js"></script>
+  <script src="https://unpkg.com/react-dom@18.2.0/umd/react-dom.development.js"></script>
+  <script src="https://unpkg.com/@babel/standalone@7.23.2/babel.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            azure: '#F0FFFF',
+          },
+        },
+      },
+    };
+  </script>
+</head>
+<body>
+  <div id="root"></div>
+  <script type="text/babel">
+    const { useState, useEffect, useRef } = React;
+
+    const App = () => {
+      const [expenses, setExpenses] = useState([]);
+      const [incomes, setIncomes] = useState([]);
+      const [expenseDescription, setExpenseDescription] = useState('');
+      const [expenseAmount, setExpenseAmount] = useState('');
+      const [category, setCategory] = useState('Food');
+      const [incomeDescription, setIncomeDescription] = useState('');
+      const [incomeAmount, setIncomeAmount] = useState('');
+      const [incomeDate, setIncomeDate] = useState('');
+      const [editingIncome, setEditingIncome] = useState(null);
+      const [editIncomeDescription, setEditIncomeDescription] = useState('');
+      const [editIncomeAmount, setEditIncomeAmount] = useState('');
+      const [editIncomeDate, setEditIncomeDate] = useState('');
+      const [savingsGoal, setSavingsGoal] = useState(0);
+      const [savingsGoalInput, setSavingsGoalInput] = useState('');
+      const chartRef = useRef(null);
+
+      // Load data from localStorage on mount
+      useEffect(() => {
+        const savedExpenses = JSON.parse(localStorage.getItem('expenses')) || [];
+        const savedIncomes = JSON.parse(localStorage.getItem('incomes')) || [];
+        const savedSavingsGoal = JSON.parse(localStorage.getItem('savingsGoal')) || 0;
+        setExpenses(savedExpenses);
+        setIncomes(savedIncomes);
+        setSavingsGoal(savedSavingsGoal);
+      }, []);
+
+      // Save data to localStorage
+      useEffect(() => {
+        localStorage.setItem('expenses', JSON.stringify(expenses));
+        localStorage.setItem('incomes', JSON.stringify(incomes));
+        localStorage.setItem('savingsGoal', JSON.stringify(savingsGoal));
+      }, [expenses, incomes, savingsGoal]);
+
+      // Handle adding a new expense
+      const addExpense = () => {
+        if (expenseDescription && expenseAmount && !isNaN(expenseAmount) && expenseAmount > 0) {
+          const newExpense = {
+            id: Date.now(),
+            description: expenseDescription,
+            amount: parseFloat(expenseAmount),
+            category,
+          };
+          setExpenses([...expenses, newExpense]);
+          setExpenseDescription('');
+          setExpenseAmount('');
+        } else {
+          alert('Please enter a valid expense description and amount.');
+        }
+      };
+
+      // Handle adding a new income
+      const addIncome = () => {
+        if (incomeDescription && incomeAmount && !isNaN(incomeAmount) && incomeAmount > 0 && incomeDate) {
+          const newIncome = {
+            id: Date.now(),
+            description: incomeDescription,
+            amount: parseFloat(incomeAmount),
+            date: incomeDate,
+          };
+          setIncomes([...incomes, newIncome]);
+          setIncomeDescription('');
+          setIncomeAmount('');
+          setIncomeDate('');
+        } else {
+          alert('Please enter a valid income description, amount, and date.');
+        }
+      };
+
+      // Handle editing an income
+      const startEditingIncome = (income) => {
+        setEditingIncome(income);
+        setEditIncomeDescription(income.description);
+        setEditIncomeAmount(income.amount);
+        setEditIncomeDate(income.date);
+      };
+
+      const saveIncomeEdit = () => {
+        if (
+          editIncomeDescription &&
+          editIncomeAmount &&
+          !isNaN(editIncomeAmount) &&
+          editIncomeAmount > 0 &&
+          editIncomeDate
+        ) {
+          setIncomes(
+            incomes.map(inc =>
+              inc.id === editingIncome.id
+                ? {
+                    ...inc,
+                    description: editIncomeDescription,
+                    amount: parseFloat(editIncomeAmount),
+                    date: editIncomeDate,
+                  }
+                : inc
+            )
+          );
+          setEditingIncome(null);
+          setEditIncomeDescription('');
+          setEditIncomeAmount('');
+          setEditIncomeDate('');
+        } else {
+          alert('Please enter a valid description, amount, and date.');
+        }
+      };
+
+      const cancelEdit = () => {
+        setEditingIncome(null);
+        setEditIncomeDescription('');
+        setEditIncomeAmount('');
+        setEditIncomeDate('');
+      };
+
+      // Handle deleting an income
+      const deleteIncome = (id) => {
+        setIncomes(incomes.filter(inc => inc.id !== id));
+      };
+
+      // Handle deleting an expense
+      const deleteExpense = (id) => {
+        setExpenses(expenses.filter(exp => exp.id !== id));
+      };
+
+      // Handle setting savings goal
+      const setSavingsGoalHandler = () => {
+        if (savingsGoalInput && !isNaN(savingsGoalInput) && savingsGoalInput > 0) {
+          setSavingsGoal(parseFloat(savingsGoalInput));
+          setSavingsGoalInput('');
+        } else {
+          alert('Please enter a valid savings goal amount.');
+        }
+      };
+
+      // Calculate totals
+      const totalIncome = incomes.reduce((sum, inc) => sum + inc.amount, 0);
+      const totalExpenses = expenses.reduce((sum, exp) => sum + exp.amount, 0);
+      const balance = totalIncome - totalExpenses;
+      const totalSavings = expenses
+        .filter(exp => exp.category === 'Savings')
+        .reduce((sum, exp) => sum + exp.amount, 0);
+      const progressPercentage = savingsGoal > 0 ? Math.min((totalSavings / savingsGoal) * 100, 100) : 0;
+
+      // Calculate data for the chart
+      const getChartData = () => {
+        const categories = ['Food', 'Rent', 'Health', 'Groceries', 'Education', 'Entertainment', 'Others', 'Savings'];
+        const data = categories.map(cat =>
+          expenses
+            .filter(exp => exp.category === cat)
+            .reduce((sum, exp) => sum + exp.amount, 0)
+        );
+        if (balance > 0) {
+          data.push(balance);
+        }
+        return data;
+      };
+
+      // Get chart labels
+      const getChartLabels = () => {
+        const categories = ['Food', 'Rent', 'Health', 'Groceries', 'Education', 'Entertainment', 'Others', 'Savings'];
+        return balance > 0 ? [...categories, 'Balance'] : categories;
+      };
+
+      // Render chart
+      useEffect(() => {
+        const ctx = document.getElementById('spendingChart')?.getContext('2d');
+        if (ctx) {
+          if (chartRef.current) {
+            chartRef.current.destroy();
+          }
+          
+          chartRef.current = new Chart(ctx, {
+            type: 'pie',
+            data: {
+              labels: getChartLabels(),
+              datasets: [{
+                data: getChartData(),
+                backgroundColor: [
+                  '#FF6384', // Food
+                  '#36A2EB', // Rent
+                  '#FFCE56', // Health
+                  '#4BC0C0', // Groceries
+                  '#9966FF', // Education
+                  '#FF9F40', // Entertainment
+                  '#C9CBCF', // Others
+                  '#00CED1', // Savings
+                  '#00FF00', // Balance
+                ],
+                borderColor: ['#fff'],
+                borderWidth: 1,
+              }],
+            },
+            options: {
+              responsive: true,
+              plugins: {
+                legend: { position: 'top' },
+                title: { display: true, text: 'Financial Overview (Expenses and Balance)' },
+              },
+            },
+          });
+        }
+
+        return () => {
+          if (chartRef.current) {
+            chartRef.current.destroy();
+            chartRef.current = null;
+          }
+        };
+      }, [expenses, incomes]);
+
+      return (
+        <div className="min-h-screen bg-purple-200 p-4">
+          <h1 className="text-3xl font-bold text-center mb-6 text-gray-800">PERSONAL FINANCE DASHBOARD</h1>
+          
+          {/* Financial Summary */}
+          <div className="max-w-md mx-auto bg-azure p-6 rounded-lg shadow-md mb-6">
+            <h2 className="text-xl font-semibold mb-4 text-gray-700">Financial Summary</h2>
+            <div className="space-y-2">
+              <p className="text-gray-600">Total Income: <span className="font-bold">₹{totalIncome.toFixed(2)}</span></p>
+              <p className="text-gray-600">Total Expenses (Including Savings): <span className="font-bold">₹{totalExpenses.toFixed(2)}</span></p>
+              <p className={`text-gray-600 ${balance >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                Balance: <span className="font-bold">₹{balance.toFixed(2)}</span>
+              </p>
+            </div>
+          </div>
+
+          {/* Savings Goal Tracker */}
+          <div className="max-w-md mx-auto bg-azure p-6 rounded-lg shadow-md mb-6">
+            <h2 className="text-xl font-semibold mb-4 text-gray-700">Savings Goal Tracker</h2>
+            <div className="space-y-4">
+              <div className="flex space-x-2">
+                <input
+                  type="number"
+                  placeholder="Set Savings Goal (e.g., 50000 ₹)"
+                  value={savingsGoalInput}
+                  onChange={(e) => setSavingsGoalInput(e.target.value)}
+                  className="w-full p-2 border rounded focus:outline-none focus:ring-2 focus:ring-green-500"
+                />
+                <button
+                  onClick={setSavingsGoalHandler}
+                  className="bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600 transition"
+                >
+                  Set Goal
+                </button>
+              </div>
+              {savingsGoal > 0 ? (
+                <div>
+                  <p className="text-gray-600 mb-2">
+                    Progress: ₹{totalSavings.toFixed(2)} / ₹{savingsGoal.toFixed(2)} ({progressPercentage.toFixed(2)}%)
+                  </p>
+                  <div className="w-full bg-gray-200 rounded-full h-4">
+                    <div
+                      className="bg-green-500 h-4 rounded-full"
+                      style={{ width: `${progressPercentage}%` }}
+                    ></div>
+                  </div>
+                </div>
+              ) : (
+                <p className="text-gray-500">Set a savings goal to track progress.</p>
+              )}
+            </div>
+          </div>
+
+          {/* Income Form */}
+          <div className="max-w-md mx-auto bg-azure p-6 rounded-lg shadow-md mb-6">
+            <h2 className="text-xl font-semibold mb-4 text-gray-700">Add Income</h2>
+            <div className="space-y-4">
+              <input
+                type="text"
+                placeholder="Description (e.g., Salary)"
+                value={incomeDescription}
+                onChange={(e) => setIncomeDescription(e.target.value)}
+                className="w-full p-2 border rounded focus:outline-none focus:ring-2 focus:ring-green-500"
+              />
+              <input
+                type="number"
+                placeholder="Amount (e.g., 2000 ₹)"
+                value={incomeAmount}
+                onChange={(e) => setIncomeAmount(e.target.value)}
+                className="w-full p-2 border rounded focus:outline-none focus:ring-2 focus:ring-green-500"
+              />
+              <input
+                type="date"
+                value={incomeDate}
+                onChange={(e) => setIncomeDate(e.target.value)}
+                className="w-full p-2 border rounded focus:outline-none focus:ring-2 focus:ring-green-500"
+              />
+              <button
+                onClick={addIncome}
+                className="w-full bg-green-500 text-white p-2 rounded hover:bg-green-600 transition"
+              >
+                Add Income
+              </button>
+            </div>
+          </div>
+
+          {/* Edit Income Modal */}
+          {editingIncome && (
+            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+              <div className="bg-azure p-6 rounded-lg shadow-md max-w-md w-full">
+                <h2 className="text-xl font-semibold mb-4 text-gray-700">Edit Income</h2>
+                <div className="space-y-4">
+                  <input
+                    type="text"
+                    placeholder="Description"
+                    value={editIncomeDescription}
+                    onChange={(e) => setEditIncomeDescription(e.target.value)}
+                    className="w-full p-2 border rounded focus:outline-none focus:ring-2 focus:ring-yellow-500"
+                  />
+                  <input
+                    type="number"
+                    placeholder="Amount (e.g., 2000 ₹)"
+                    value={editIncomeAmount}
+                    onChange={(e) => setEditIncomeAmount(e.target.value)}
+                    className="w-full p-2 border rounded focus:outline-none focus:ring-2 focus:ring-yellow-500"
+                  />
+                  <input
+                    type="date"
+                    value={editIncomeDate}
+                    onChange={(e) => setEditIncomeDate(e.target.value)}
+                    className="w-full p-2 border rounded focus:outline-none focus:ring-2 focus:ring-yellow-500"
+                  />
+                  <div className="flex space-x-2">
+                    <button
+                      onClick={saveIncomeEdit}
+                      className="w-full bg-yellow-500 text-white p-2 rounded hover:bg-yellow-600 transition"
+                    >
+                      Save
+                    </button>
+                    <button
+                      onClick={cancelEdit}
+                      className="w-full bg-gray-500 text-white p-2 rounded hover:bg-gray-600 transition"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Income List */}
+          <div className="max-w-md mx-auto bg-azure p-6 rounded-lg shadow-md mb-6">
+            <h2 className="text-xl font-semibold mb-4 text-gray-700">Income</h2>
+            {incomes.length === 0 ? (
+              <p className="text-gray-500">No income added yet.</p>
+            ) : (
+              <ul className="space-y-2">
+                {incomes.map(inc => (
+                  <li key={inc.id} className="flex justify-between items-center p-2 border-b text-gray-600">
+                    <span>{inc.description} ({inc.date}) - ₹{inc.amount.toFixed(2)}</span>
+                    <div className="flex space-x-2">
+                      <button
+                        onClick={() => startEditingIncome(inc)}
+                        className="bg-yellow-500 text-white px-2 py-1 rounded hover:bg-yellow-600 transition"
+                      >
+                        Edit
+                      </button>
+                      <button
+                        onClick={() => deleteIncome(inc.id)}
+                        className="bg-red-500 text-white px-2 py-1 rounded hover:bg-red-600 transition"
+                      >
+                        X
+                      </button>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+
+          {/* Expense Form */}
+          <div className="max-w-md mx-auto bg-azure p-6 rounded-lg shadow-md mb-6">
+            <h2 className="text-xl font-semibold mb-4 text-gray-700">Add Expense</h2>
+            <div className="space-y-4">
+              <input
+                type="text"
+                placeholder="Description (e.g., Coffee)"
+                value={expenseDescription}
+                onChange={(e) => setExpenseDescription(e.target.value)}
+                className="w-full p-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+              <input
+                type="number"
+                placeholder="Amount (e.g., 500 ₹)"
+                value={expenseAmount}
+                onChange={(e) => setExpenseAmount(e.target.value)}
+                className="w-full p-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+              <select
+                value={category}
+                onChange={(e) => setCategory(e.target.value)}
+                className="w-full p-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="Food">Food</option>
+                <option value="Rent">Rent</option>
+                <option value="Health">Health</option>
+                <option value="Groceries">Groceries</option>
+                <option value="Education">Education</option>
+                <option value="Entertainment">Entertainment</option>
+                <option value="Others">Others</option>
+                <option value="Savings">Savings</option>
+              </select>
+              <button
+                onClick={addExpense}
+                className="w-full bg-blue-500 text-white p-2 rounded hover:bg-blue-600 transition"
+              >
+                Add Expense
+              </button>
+            </div>
+          </div>
+
+          {/* Expense List */}
+          <div className="max-w-md mx-auto bg-azure p-6 rounded-lg shadow-md mb-6">
+            <h2 className="text-xl font-semibold mb-4 text-gray-700">Expenses</h2>
+            {expenses.length === 0 ? (
+              <p className="text-gray-500">No expenses added yet.</p>
+            ) : (
+              <ul className="space-y-2">
+                {expenses.map(exp => (
+                  <li key={exp.id} className="flex justify-between items-center p-2 border-b text-gray-600">
+                    <span>{exp.description} ({exp.category}) - ₹{exp.amount.toFixed(2)}</span>
+                    <button
+                      onClick={() => deleteExpense(exp.id)}
+                      className="bg-red-500 text-white px-2 py-1 rounded hover:bg-red-600 transition"
+                    >
+                      Delete
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+
+          {/* Chart */}
+          <div className="max-w-md mx-auto bg-azure p-6 rounded-lg shadow-md">
+            <canvas id="spendingChart" width="400" height="400"></canvas>
+          </div>
+        </div>
+      );
+    };
+
+    // Render the app
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<App />);
+  </script>
+</body>
+</html>
